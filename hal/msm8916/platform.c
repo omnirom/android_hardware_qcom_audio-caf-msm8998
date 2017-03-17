@@ -51,6 +51,7 @@
 #define MIXER_XML_PATH_SKUE "/system/etc/mixer_paths_skue.xml"
 #define MIXER_XML_PATH_SKUL "/system/etc/mixer_paths_skul.xml"
 #define MIXER_XML_PATH_SKUS "/system/etc/mixer_paths_skus.xml"
+#define MIXER_XML_PATH_SKUSH "/system/etc/mixer_paths_skush.xml"
 #define MIXER_XML_PATH_SKUM "/system/etc/mixer_paths_qrd_skum.xml"
 #define MIXER_XML_PATH_SKU1 "/system/etc/mixer_paths_qrd_sku1.xml"
 #define MIXER_XML_PATH_SKUN_CAJON "/system/etc/mixer_paths_qrd_skun_cajon.xml"
@@ -1241,6 +1242,13 @@ static void query_platform(const char *snd_card_name,
     } else if (!strncmp(snd_card_name, "sdm660-snd-card-mtp",
                   sizeof("sdm660-snd-card-mtp"))) {
         strlcpy(mixer_xml_path, MIXER_XML_PATH_MTP,
+               MAX_MIXER_XML_PATH);
+        msm_device_to_be_id = msm_device_to_be_id_internal_codec;
+        msm_be_id_array_len  =
+            sizeof(msm_device_to_be_id_internal_codec) / sizeof(msm_device_to_be_id_internal_codec[0]);
+    } else if (!strncmp(snd_card_name, "sdm660-snd-card-skush",
+                  sizeof("sdm660-snd-card-skush"))) {
+        strlcpy(mixer_xml_path, MIXER_XML_PATH_SKUSH,
                MAX_MIXER_XML_PATH);
         msm_device_to_be_id = msm_device_to_be_id_internal_codec;
         msm_be_id_array_len  =
@@ -5906,12 +5914,12 @@ int platform_set_channel_map(void *platform, int ch_count, char *ch_map, int snd
     char mixer_ctl_name[44] = {0}; // max length of name is 44 as defined
     int ret;
     unsigned int i;
-    int set_values[8] = {0};
+    int set_values[FCC_8] = {0};
     struct platform_data *my_data = (struct platform_data *)platform;
     struct audio_device *adev = my_data->adev;
     ALOGV("%s channel_count:%d",__func__, ch_count);
-    if (NULL == ch_map) {
-        ALOGE("%s: Invalid channel mapping used", __func__);
+    if (NULL == ch_map || (ch_count < 1) || (ch_count > FCC_8)) {
+        ALOGE("%s: Invalid channel mapping or channel count value", __func__);
         return -EINVAL;
     }
 
@@ -5933,7 +5941,7 @@ int platform_set_channel_map(void *platform, int ch_count, char *ch_map, int snd
               __func__, mixer_ctl_name);
         return -EINVAL;
     }
-    for (i = 0; i< ARRAY_SIZE(set_values); i++) {
+    for (i = 0; i < (unsigned int)ch_count; i++) {
         set_values[i] = ch_map[i];
     }
 
@@ -5941,7 +5949,7 @@ int platform_set_channel_map(void *platform, int ch_count, char *ch_map, int snd
         set_values[0], set_values[1], set_values[2], set_values[3], set_values[4],
         set_values[5], set_values[6], set_values[7], ch_count);
 
-    ret = mixer_ctl_set_array(ctl, set_values, ch_count);
+    ret = mixer_ctl_set_array(ctl, set_values, ARRAY_SIZE(set_values));
     if (ret < 0) {
         ALOGE("%s: Could not set ctl, error:%d ch_count:%d",
               __func__, ret, ch_count);
