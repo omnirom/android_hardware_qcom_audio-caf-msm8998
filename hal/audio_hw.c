@@ -79,8 +79,6 @@
 #define COMPRESS_OFFLOAD_NUM_FRAGMENTS 4
 /*DIRECT PCM has same buffer sizes as DEEP Buffer*/
 #define DIRECT_PCM_NUM_FRAGMENTS 2
-/* ToDo: Check and update a proper value in msec */
-#define COMPRESS_OFFLOAD_PLAYBACK_LATENCY 50
 #define COMPRESS_PLAYBACK_VOLUME_MAX 0x2000
 #define DSD_VOLUME_MIN_DB (-110)
 
@@ -695,6 +693,7 @@ int enable_audio_route(struct audio_device *adev,
 {
     snd_device_t snd_device;
     char mixer_path[MIXER_PATH_MAX_LENGTH];
+    struct stream_out *out = NULL;
 
     if (usecase == NULL)
         return -EINVAL;
@@ -715,6 +714,12 @@ int enable_audio_route(struct audio_device *adev,
     audio_extn_listen_update_stream_status(usecase, LISTEN_EVENT_STREAM_BUSY);
     audio_extn_utils_send_app_type_cfg(adev, usecase);
     audio_extn_utils_send_audio_calibration(adev, usecase);
+    if ((usecase->type == PCM_PLAYBACK) && is_offload_usecase(usecase->id)) {
+        out = usecase->stream.out;
+        if (out && out->compr)
+            audio_extn_utils_compress_set_clk_rec_mode(usecase);
+    }
+
     strlcpy(mixer_path, use_case_table[usecase->id], MIXER_PATH_MAX_LENGTH);
     platform_add_backend_name(mixer_path, snd_device, usecase);
     ALOGD("%s: apply mixer and update path: %s", __func__, mixer_path);
@@ -2159,6 +2164,9 @@ static int stop_output_stream(struct stream_out *out)
     if (out->devices & AUDIO_DEVICE_OUT_AUX_DIGITAL)
         audio_extn_keep_alive_start();
 
+    /*reset delay_param to 0*/
+    out->delay_param.start_delay = 0;
+
     ALOGV("%s: exit: status(%d)", __func__, ret);
     return ret;
 }
@@ -2333,6 +2341,14 @@ int start_output_stream(struct stream_out *out)
         if (!out->non_blocking) {
             compress_set_max_poll_wait(out->compr, 1000);
         }
+
+        audio_extn_utils_compress_set_render_mode(out);
+        audio_extn_utils_compress_set_clk_rec_mode(uc_info);
+        /* set render window if it was set before compress_open() */
+        if (out->render_window.render_ws != 0 && out->render_window.render_we != 0)
+            audio_extn_utils_compress_set_render_window(out,
+                                            &out->render_window);
+        audio_extn_utils_compress_set_start_delay(out, &out->delay_param);
 
         audio_extn_dts_create_state_notifier_node(out->usecase);
         audio_extn_dts_notify_playback_state(out->usecase, 0, out->sample_rate,
@@ -2928,7 +2944,9 @@ static uint32_t out_get_latency(const struct audio_stream_out *stream)
     uint32_t latency = 0;
 
     if (is_offload_usecase(out->usecase)) {
-        latency = COMPRESS_OFFLOAD_PLAYBACK_LATENCY;
+        lock_output_stream(out);
+        latency = audio_extn_utils_compress_get_dsp_latency(out);
+        pthread_mutex_unlock(&out->lock);
     } else if (out->realtime) {
         // since the buffer won't be filled up faster than realtime,
         // return a smaller number
@@ -3794,7 +3812,10 @@ exit:
             pthread_mutex_unlock(&adev->lock);
             in->standby = true;
         }
-        memset(buffer, 0, bytes);
+        if (!audio_extn_cin_attached_usecase(in->usecase)) {
+            bytes_read = bytes;
+            memset(buffer, 0, bytes);
+        }
         in_standby(&in->stream.common);
         ALOGV("%s: read failed status %d- sleeping for buffer duration", __func__, ret);
         usleep((uint64_t)bytes * 1000000 / audio_stream_in_frame_size(stream) /
@@ -4137,6 +4158,17 @@ int adev_open_output_stream(struct audio_hw_device *dev,
         if (flags & AUDIO_OUTPUT_FLAG_NON_BLOCKING)
             out->non_blocking = 1;
 
+        if ((flags & AUDIO_OUTPUT_FLAG_TIMESTAMP) &&
+            (flags & AUDIO_OUTPUT_FLAG_HW_AV_SYNC)) {
+            out->render_mode = RENDER_MODE_AUDIO_STC_MASTER;
+        } else if(flags & AUDIO_OUTPUT_FLAG_TIMESTAMP) {
+            out->render_mode = RENDER_MODE_AUDIO_MASTER;
+        } else {
+            out->render_mode = RENDER_MODE_AUDIO_NO_TIMESTAMP;
+        }
+
+        memset(&out->render_window, 0,
+                sizeof(struct audio_out_render_window_param));
 
         out->send_new_metadata = 1;
         out->send_next_track_params = false;
