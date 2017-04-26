@@ -1092,19 +1092,17 @@ static void check_usecases_codec_backend(struct audio_device *adev,
               platform_get_snd_device_name(snd_device),
               platform_get_snd_device_name(usecase->out_snd_device),
               platform_check_backends_match(snd_device, usecase->out_snd_device));
-        uc_derive_snd_device = derive_playback_snd_device(adev->platform,
-                                           usecase, uc_info, snd_device);
-        if (usecase->type != PCM_CAPTURE &&
-            usecase != uc_info &&
-            ((uc_derive_snd_device != usecase->out_snd_device) || force_routing) &&
-            ((usecase->devices & AUDIO_DEVICE_OUT_ALL_CODEC_BACKEND) ||
-             (usecase->devices & AUDIO_DEVICE_OUT_AUX_DIGITAL) ||
-             (usecase->devices & AUDIO_DEVICE_OUT_USB_DEVICE) ||
-             (usecase->devices & AUDIO_DEVICE_OUT_ALL_A2DP) ||
-             (usecase->devices & AUDIO_DEVICE_OUT_ALL_SCO)) &&
-             ((force_restart_session) ||
-             (platform_check_backends_match(snd_device, usecase->out_snd_device)))) {
-
+        if ((usecase->type != PCM_CAPTURE) && (usecase != uc_info)) {
+            uc_derive_snd_device = derive_playback_snd_device(adev->platform,
+                                               usecase, uc_info, snd_device);
+            if (((uc_derive_snd_device != usecase->out_snd_device) || force_routing) &&
+                ((usecase->devices & AUDIO_DEVICE_OUT_ALL_CODEC_BACKEND) ||
+                (usecase->devices & AUDIO_DEVICE_OUT_AUX_DIGITAL) ||
+                (usecase->devices & AUDIO_DEVICE_OUT_USB_DEVICE) ||
+                (usecase->devices & AUDIO_DEVICE_OUT_ALL_A2DP) ||
+                (usecase->devices & AUDIO_DEVICE_OUT_ALL_SCO)) &&
+                ((force_restart_session) ||
+                (platform_check_backends_match(snd_device, usecase->out_snd_device)))) {
                 ALOGD("%s:becf: check_usecases (%s) is active on (%s) - disabling ..",
                     __func__, use_case_table[usecase->id],
                       platform_get_snd_device_name(usecase->out_snd_device));
@@ -1113,6 +1111,7 @@ static void check_usecases_codec_backend(struct audio_device *adev,
                 /* Enable existing usecase on derived playback device */
                 derive_snd_device[usecase->id] = uc_derive_snd_device;
                 num_uc_to_switch++;
+            }
         }
     }
 
@@ -1206,7 +1205,7 @@ static void check_usecases_capture_codec_backend(struct audio_device *adev,
                 (usecase->in_snd_device != snd_device || force_routing) &&
                 ((uc_info->devices & backend_check_cond) &&
                  (((usecase->devices & ~AUDIO_DEVICE_BIT_IN) & AUDIO_DEVICE_IN_ALL_CODEC_BACKEND) ||
-                  (usecase->type == VOICE_CALL) || (usecase->type == VOIP_CALL))) &&
+                  (usecase->type == VOIP_CALL))) &&
                 (usecase->id != USECASE_AUDIO_SPKR_CALIB_TX)) {
             ALOGV("%s: Usecase (%s) is active on (%s) - disabling ..",
                   __func__, use_case_table[usecase->id],
