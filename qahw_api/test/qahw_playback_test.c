@@ -58,6 +58,10 @@
 #define KVPAIRS_MAX 100
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[1]))
 
+#define FORMAT_DESCRIPTOR_SIZE 12
+#define SUBCHUNK1_SIZE(x) ((8) + (x))
+#define SUBCHUNK2_SIZE 8
+
 static int get_wav_header_length (FILE* file_stream);
 static void init_streams(void);
 int pthread_cancel(pthread_t thread);
@@ -584,8 +588,6 @@ void *start_stream_playback (void* stream_data)
     pthread_t drift_query_thread;
     struct drift_data drift_params;
 
-    if (params->output_device & AUDIO_DEVICE_OUT_ALL_A2DP)
-        params->output_device = AUDIO_DEVICE_OUT_PROXY;
     rc = qahw_open_output_stream(params->qahw_out_hal_handle,
                              params->handle,
                              params->output_device,
@@ -1028,7 +1030,7 @@ static void get_file_format(stream_config *stream_info)
     }
     stream_info->config.sample_rate = stream_info->config.offload_info.sample_rate;
     stream_info->config.format = stream_info->config.offload_info.format;
-    stream_info->config.channel_mask = stream_info->config.offload_info.channel_mask = audio_channel_in_mask_from_count(stream_info->channels);
+    stream_info->config.channel_mask = stream_info->config.offload_info.channel_mask = audio_channel_out_mask_from_count(stream_info->channels);
     return;
 }
 
@@ -1109,8 +1111,8 @@ int measure_kpi_values(qahw_stream_handle_t* out_handle, bool is_offload) {
     fread((void *) latency_buf, 100, 1, fd_latency_node);
     fclose(fd_latency_node);
     sscanf(latency_buf, " %llu,%llu,%*llu,%*llu,%llu,%llu", &scold, &uscold, &scont, &uscont);
-    tcold = scold*1000 - ts_cold.tv_sec*1000 + uscold/1000 - ts_cold.tv_nsec/1000000;
-    tcont = scont*1000 - ts_cont.tv_sec*1000 + uscont/1000 - ts_cont.tv_nsec/1000000;
+    tcold = scold*1000 - ((uint64_t)ts_cold.tv_sec)*1000 + uscold/1000 - ((uint64_t)ts_cold.tv_nsec)/1000000;
+    tcont = scont*1000 - ((uint64_t)ts_cont.tv_sec)*1000 + uscont/1000 - ((uint64_t)ts_cont.tv_nsec)/1000000;
     fprintf(log_file, "\n values from debug node %s\n", latency_buf);
     fprintf(log_file, " cold latency %llums, continuous latency %llums,\n", tcold, tcont);
     fprintf(log_file, " **Note: please add DSP Pipe/PP latency numbers to this, for final latency values\n");
@@ -1458,10 +1460,13 @@ void usage() {
     printf(" hal_play_test -f /data/MateRani.mp3 -t 2 -d 2 -v 0.01 -r 44100 -c 2 \n");
     printf("                                          -> plays MP3 stream(-t = 2) on speaker device(-d = 2)\n");
     printf("                                          -> 2 channels and 44100 sample rate\n\n");
-    printf(" hal_play_test -f /data/v1-CBR-32kHz-stereo-40kbps.mp3 -t 2 -d 128 -v 0.01 -r 32000 -c 2 -D /data/proxy_dump.wav\n");
-    printf("                                          -> plays MP3 stream(-t = 2) on BT device(-d = 128)\n");
+    printf(" hal_play_test -f /data/v1-CBR-32kHz-stereo-40kbps.mp3 -t 2 -d 33554432 -v 0.01 -r 32000 -c 2 -D /data/proxy_dump.wav\n");
+    printf("                                          -> plays MP3 stream(-t = 2) on BT device in non-split path (-d = 33554432)\n");
     printf("                                          -> 2 channels and 32000 sample rate\n");
     printf("                                          -> dumps pcm data to file at /data/proxy_dump.wav\n\n");
+    printf(" hal_play_test -f /data/v1-CBR-32kHz-stereo-40kbps.mp3 -t 2 -d 128 -v 0.01 -r 32000 -c 2 \n");
+    printf("                                          -> plays MP3 stream(-t = 2) on BT device in split path (-d = 128)\n");
+    printf("                                          -> 2 channels and 32000 sample rate\n");
     printf(" hal_play_test -f /data/AACLC-71-48000Hz-384000bps.aac  -t 4 -d 2 -v 0.05 -r 48000 -c 2 -a 1 \n");
     printf("                                          -> plays AAC-ADTS stream(-t = 4) on speaker device(-d = 2)\n");
     printf("                                          -> AAC format type is LC(-a = 1)\n");
@@ -1531,20 +1536,7 @@ static int get_wav_header_length (FILE* file_stream)
         fprintf(log_file, "This is not a valid wav file \n");
         fprintf(stderr, "This is not a valid wav file \n");
     } else {
-          switch (subchunk_size) {
-          case 16:
-              fprintf(log_file, "44-byte wav header \n");
-              wav_header_len = 44;
-              break;
-          case 18:
-              fprintf(log_file, "46-byte wav header \n");
-              wav_header_len = 46;
-              break;
-          default:
-              fprintf(log_file, "Header contains extra data and is larger than 46 bytes: subchunk_size=%d \n", subchunk_size);
-              wav_header_len = subchunk_size;
-              break;
-          }
+         wav_header_len = FORMAT_DESCRIPTOR_SIZE + SUBCHUNK1_SIZE(subchunk_size) + SUBCHUNK2_SIZE;
     }
     return wav_header_len;
 }
@@ -1815,7 +1807,7 @@ int main(int argc, char* argv[]) {
         goto exit;
     }
 
-    if (num_of_streams > 1 && stream_param[num_of_streams-1].output_device & AUDIO_DEVICE_OUT_ALL_A2DP) {
+    if (num_of_streams > 1 && stream_param[num_of_streams-1].output_device & AUDIO_DEVICE_OUT_PROXY) {
         fprintf(log_file, "Proxy thread is not supported for multi-playback usecase\n");
         fprintf(stderr, "Proxy thread is not supported for multi-playback usecase\n");
         goto exit;
@@ -1886,13 +1878,14 @@ int main(int argc, char* argv[]) {
         } else if (kpi_mode == true)
             stream->config.format = stream->config.offload_info.format = AUDIO_FORMAT_PCM_16_BIT;
 
-        if (stream->output_device & AUDIO_DEVICE_OUT_ALL_A2DP)
+        if (stream->output_device & AUDIO_DEVICE_OUT_PROXY)
             fprintf(log_file, "Saving pcm data to file: %s\n", proxy_params.acp.file_name);
 
         /* Set device connection state for HDMI */
-        if (stream->output_device == AUDIO_DEVICE_OUT_AUX_DIGITAL) {
+        if ((stream->output_device == AUDIO_DEVICE_OUT_AUX_DIGITAL) ||
+            (stream->output_device == AUDIO_DEVICE_OUT_BLUETOOTH_A2DP)) {
             char param[100] = {0};
-            snprintf(param, sizeof(param), "%s=%d", "connect", AUDIO_DEVICE_OUT_AUX_DIGITAL);
+            snprintf(param, sizeof(param), "%s=%d", "connect", stream->output_device);
             qahw_set_parameters(stream->qahw_out_hal_handle, param);
         }
 
@@ -1951,9 +1944,10 @@ exit:
      * reset device connection state for HDMI and close the file streams
      */
      for (i = 0; i < num_of_streams; i++) {
-         if (stream_param[i].output_device == AUDIO_DEVICE_OUT_AUX_DIGITAL) {
+         if ((stream_param[i].output_device == AUDIO_DEVICE_OUT_AUX_DIGITAL) ||
+             (stream_param[i].output_device == AUDIO_DEVICE_OUT_BLUETOOTH_A2DP)) {
              char param[100] = {0};
-             snprintf(param, sizeof(param), "%s=%d", "disconnect", AUDIO_DEVICE_OUT_AUX_DIGITAL);
+             snprintf(param, sizeof(param), "%s=%d", "disconnect", stream_param[i].output_device);
              qahw_set_parameters(stream_param[i].qahw_out_hal_handle, param);
          }
 
