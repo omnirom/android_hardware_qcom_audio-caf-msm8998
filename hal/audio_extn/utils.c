@@ -791,6 +791,25 @@ void audio_extn_utils_update_stream_app_type_cfg_for_usecase(
     }
 }
 
+void audio_extn_btsco_get_sample_rate(int snd_device, int *sample_rate)
+{
+    switch (snd_device) {
+    case SND_DEVICE_OUT_BT_SCO:
+    case SND_DEVICE_IN_BT_SCO_MIC:
+    case SND_DEVICE_IN_BT_SCO_MIC_NREC:
+        *sample_rate = 8000;
+        break;
+    case SND_DEVICE_OUT_BT_SCO_WB:
+    case SND_DEVICE_IN_BT_SCO_MIC_WB:
+    case SND_DEVICE_IN_BT_SCO_MIC_WB_NREC:
+        *sample_rate = 16000;
+        break;
+    default:
+        ALOGD("%s:Not a BT SCO device, need not update sampling rate\n", __func__);
+        break;
+    }
+}
+
 static int send_app_type_cfg_for_device(struct audio_device *adev,
                                         struct audio_usecase *usecase,
                                         int split_snd_device)
@@ -896,6 +915,7 @@ static int send_app_type_cfg_for_device(struct audio_device *adev,
             /* Reset to default if no native stream is active*/
             usecase->stream.out->app_type_cfg.sample_rate = DEFAULT_OUTPUT_SAMPLING_RATE;
         }
+        audio_extn_btsco_get_sample_rate(snd_device, &usecase->stream.out->app_type_cfg.sample_rate);
         sample_rate = usecase->stream.out->app_type_cfg.sample_rate;
 
         app_type = usecase->stream.out->app_type_cfg.app_type;
@@ -918,6 +938,7 @@ static int send_app_type_cfg_for_device(struct audio_device *adev,
         app_type = usecase->stream.in->app_type_cfg.app_type;
         app_type_cfg[len++] = app_type;
         app_type_cfg[len++] = acdb_dev_id;
+        audio_extn_btsco_get_sample_rate(snd_device, &usecase->stream.in->app_type_cfg.sample_rate);
         sample_rate = usecase->stream.in->app_type_cfg.sample_rate;
         app_type_cfg[len++] = sample_rate;
         if (snd_device_be_idx > 0)
