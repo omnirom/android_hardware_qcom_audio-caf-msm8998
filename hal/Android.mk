@@ -273,6 +273,10 @@ ifeq ($(strip $(AUDIO_FEATURE_ENABLED_BT_HAL)),true)
     LOCAL_SRC_FILES += audio_extn/bt_hal.c
 endif
 
+ifneq ($(strip $(BOARD_SUPPORTS_BT_SCO_CHECK)),false)
+    LOCAL_CFLAGS += -DBT_SCO_CHECK
+endif
+
 LOCAL_SHARED_LIBRARIES := \
 	liblog \
 	libcutils \
