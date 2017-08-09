@@ -1469,6 +1469,7 @@ static bool force_device_switch(struct audio_usecase *usecase)
     return ret;
 }
 
+#if defined(BT_SCO_CHECK)
 bool is_btsco_device(snd_device_t out_snd_device, snd_device_t in_snd_device)
 {
    bool ret=false;
@@ -1510,6 +1511,7 @@ bool is_bt_soc_on(struct audio_device *adev)
 }
 
 int out_standby_l(struct audio_stream *stream);
+#endif // BT_SCO_CHECK
 
 int select_devices(struct audio_device *adev, audio_usecase_t uc_id)
 {
@@ -1637,11 +1639,13 @@ int select_devices(struct audio_device *adev, audio_usecase_t uc_id)
             return 0;
     }
 
+#if defined(BT_SCO_CHECK)
     if ((is_btsco_device(out_snd_device,in_snd_device) && !adev->bt_sco_on) ||
          (is_a2dp_device(out_snd_device) && !audio_extn_a2dp_is_ready())) {
           ALOGD("SCO/A2DP is selected but they are not connected/ready hence dont route");
           return 0;
     }
+#endif // BT_SCO_CHECK
 
     ALOGD("%s: out_snd_device(%d: %s) in_snd_device(%d: %s)", __func__,
           out_snd_device, platform_get_snd_device_name(out_snd_device),
@@ -1794,6 +1798,7 @@ int select_devices(struct audio_device *adev, audio_usecase_t uc_id)
                                                                out_snd_device,
                                                                in_snd_device);
 
+#if defined(BT_SCO_CHECK)
     if (is_btsco_device(out_snd_device, in_snd_device) || is_a2dp_device(out_snd_device)) {
 
          if (usecase->type == VOIP_CALL) {
@@ -1821,6 +1826,7 @@ int select_devices(struct audio_device *adev, audio_usecase_t uc_id)
               }
          }
     }
+#endif // BT_SCO_CHECK
 
     ALOGD("%s: done",__func__);
 
@@ -1881,6 +1887,7 @@ int start_input_stream(struct stream_in *in)
         goto error_config;
     }
 
+#if defined(BT_SCO_CHECK)
     if (audio_is_bluetooth_sco_device(in->device)) {
         if (!adev->bt_sco_on) {
             ALOGE("%s: SCO profile is not ready, return error", __func__);
@@ -1888,6 +1895,7 @@ int start_input_stream(struct stream_in *in)
             goto error_config;
         }
     }
+#endif // BT_SCO_CHECK
 
     /* Check if source matches incall recording usecase criteria */
     ret = voice_check_and_set_incall_rec_usecase(adev, in);
@@ -2338,6 +2346,7 @@ int start_output_stream(struct stream_out *out)
             }
         }
     }
+#if defined(BT_SCO_CHECK)
     if (out->devices & AUDIO_DEVICE_OUT_ALL_SCO) {
         if (!adev->bt_sco_on) {
             if (out->devices & AUDIO_DEVICE_OUT_SPEAKER) {
@@ -2351,6 +2360,7 @@ int start_output_stream(struct stream_out *out)
             }
         }
     }
+#endif // BT_SCO_CHECK
 
     out->pcm_device_id = platform_get_pcm_device_id(out->usecase, PCM_PLAYBACK);
     if (out->pcm_device_id < 0) {
@@ -2760,6 +2770,7 @@ static int out_standby(struct audio_stream *stream)
  *standby implementation without locks, assumes that the callee already
  *has taken adev and out lock.
  */
+#if defined(BT_SCO_CHECK)
 int out_standby_l(struct audio_stream *stream)
 {
     struct stream_out *out = (struct stream_out *)stream;
@@ -2802,7 +2813,7 @@ int out_standby_l(struct audio_stream *stream)
     ALOGD("%s: exit", __func__);
     return 0;
 }
-
+#endif // BT_SCO_CHECK
 
 static int out_dump(const struct audio_stream *stream __unused,
                     int fd __unused)
@@ -4675,6 +4686,7 @@ static int adev_set_parameters(struct audio_hw_device *dev, const char *kvpairs)
         }
     }
 
+#if defined(BT_SCO_CHECK)
     ret = str_parms_get_str(parms, "BT_SCO", value, sizeof(value));
     if (ret >= 0) {
         /* When set to false, HAL should disable EC and NS */
@@ -4683,6 +4695,7 @@ static int adev_set_parameters(struct audio_hw_device *dev, const char *kvpairs)
         else
             adev->bt_sco_on = false;
     }
+#endif // BT_SCO_CHECK
 
     pthread_mutex_lock(&adev->lock);
     status = voice_set_parameters(adev, parms);
