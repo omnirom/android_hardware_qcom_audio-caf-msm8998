@@ -75,6 +75,9 @@
 #include "audio_extn.h"
 #include "voice_extn.h"
 #include "ip_hdlr_intf.h"
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+#include "ultrasound.h"
+#endif
 
 #include "sound/compress_params.h"
 #include "sound/asound.h"
@@ -350,7 +353,10 @@ const char * const use_case_table[AUDIO_USECASE_MAX] = {
     [USECASE_AUDIO_PLAYBACK_INTERACTIVE_STREAM6] = "audio-interactive-stream6",
     [USECASE_AUDIO_PLAYBACK_INTERACTIVE_STREAM7] = "audio-interactive-stream7",
     [USECASE_AUDIO_PLAYBACK_INTERACTIVE_STREAM8] = "audio-interactive-stream8",
-
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    [USECASE_AUDIO_ULTRASOUND_RX] = "ultrasound-rx",
+    [USECASE_AUDIO_ULTRASOUND_TX] = "ultrasound-tx",
+#endif
     [USECASE_AUDIO_EC_REF_LOOPBACK] = "ec-ref-audio-capture",
 
     [USECASE_AUDIO_A2DP_ABR_FEEDBACK] = "a2dp-abr-feedback"
@@ -6587,6 +6593,17 @@ static int adev_set_parameters(struct audio_hw_device *dev, const char *kvpairs)
         }
     }
 
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    ret = str_parms_get_int(parms, "ultrasound-sensor", &val);
+    if (ret >= 0) {
+        if (val == 1) {
+            us_start();
+        } else {
+            us_stop();
+        }
+    }
+#endif
+
     audio_extn_set_parameters(adev, parms);
 done:
     str_parms_destroy(parms);
@@ -7267,6 +7284,9 @@ static int adev_close(hw_device_t *device)
         free(device);
         adev = NULL;
     }
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    us_deinit();
+#endif
     pthread_mutex_unlock(&adev_init_lock);
 
     return 0;
@@ -7601,6 +7621,9 @@ static int adev_open(const hw_module_t *module, const char *name,
     adev->vr_audio_mode_enabled = false;
 
     audio_extn_ds2_enable(adev);
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    us_init(adev);
+#endif
     *device = &adev->device.common;
     adev->dsp_bit_width_enforce_mode =
         adev_init_dsp_bit_width_enforce_mode(adev->mixer);
