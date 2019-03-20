@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
  * Not a contribution.
  *
  * Copyright (C) 2013 The Android Open Source Project
@@ -93,6 +93,21 @@ typedef struct acdb_audio_cal_cfg {
     uint32_t             param_id;
 } acdb_audio_cal_cfg_t;
 
+
+struct audio_custom_mtmx_params_info {
+    uint32_t id;
+    uint32_t ip_channels;
+    uint32_t op_channels;
+    uint32_t usecase_id;
+    uint32_t snd_device;
+};
+
+struct audio_custom_mtmx_params {
+    struct listnode list;
+    struct audio_custom_mtmx_params_info info;
+    uint32_t coeffs[0];
+};
+
 enum card_status_t;
 
 void *platform_init(struct audio_device *adev);
@@ -150,6 +165,7 @@ int platform_switch_voice_call_usecase_route_post(void *platform,
                                                   snd_device_t in_snd_device);
 int platform_start_voice_call(void *platform, uint32_t vsid);
 int platform_stop_voice_call(void *platform, uint32_t vsid);
+int platform_set_mic_break_det(void *platform, bool enable);
 int platform_set_voice_volume(void *platform, int volume);
 int platform_set_mic_mute(void *platform, bool state);
 int platform_get_sample_rate(void *platform, uint32_t *rate);
@@ -306,4 +322,9 @@ int platform_get_active_microphones(void *platform, unsigned int channels,
                                     audio_usecase_t usecase,
                                     struct audio_microphone_characteristic_t *mic_array,
                                     size_t *mic_count);
+struct audio_custom_mtmx_params *
+    platform_get_custom_mtmx_params(void *platform,
+                                    struct audio_custom_mtmx_params_info *info);
+int platform_add_custom_mtmx_params(void *platform,
+                                    struct audio_custom_mtmx_params_info *info);
 #endif // AUDIO_PLATFORM_API_H

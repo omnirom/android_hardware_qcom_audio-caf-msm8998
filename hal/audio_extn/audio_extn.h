@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2013 The Android Open Source Project
@@ -42,6 +42,8 @@
 #include "adsp_hdlr.h"
 #include "ip_hdlr_intf.h"
 #include "battery_listener.h"
+
+#define AUDIO_PARAMETER_DUAL_MONO  "dual_mono"
 
 #ifndef AFE_PROXY_ENABLED
 #define AUDIO_DEVICE_OUT_PROXY 0x40000
@@ -169,9 +171,13 @@ void audio_extn_set_aanc_noise_level(struct audio_device *adev,
 #ifndef VBAT_MONITOR_ENABLED
 #define audio_extn_is_vbat_enabled()                     (0)
 #define audio_extn_can_use_vbat()                        (0)
+#define audio_extn_is_bcl_enabled()                     (0)
+#define audio_extn_can_use_bcl()                        (0)
 #else
 bool audio_extn_is_vbat_enabled(void);
 bool audio_extn_can_use_vbat(void);
+bool audio_extn_is_bcl_enabled(void);
+bool audio_extn_can_use_bcl(void);
 #endif
 
 #ifndef RAS_ENABLED
@@ -217,7 +223,8 @@ int32_t audio_extn_get_afe_proxy_channel_count();
 #define audio_extn_usb_deinit()                                        (0)
 #define audio_extn_usb_add_device(device, card)                        (0)
 #define audio_extn_usb_remove_device(device, card)                     (0)
-#define audio_extn_usb_is_config_supported(bit_width, sample_rate, ch, pb) (0)
+#define audio_extn_usb_is_config_supported(bit_width, sample_rate, ch, pb) \
+                        (*bit_width=0, *sample_rate=0, *ch=0, 0)
 #define audio_extn_usb_enable_sidetone(device, enable)                 (0)
 #define audio_extn_usb_set_sidetone_gain(parms, value, len)            (0)
 #define audio_extn_usb_is_capture_supported()                          (0)
@@ -388,6 +395,8 @@ void audio_extn_listen_set_parameters(struct audio_device *adev,
 #define audio_extn_sound_trigger_check_and_get_session(in)             (0)
 #define audio_extn_sound_trigger_stop_lab(in)                          (0)
 #define audio_extn_sound_trigger_read(in, buffer, bytes)               (0)
+#define audio_extn_sound_trigger_check_ec_ref_enable()                 (0)
+#define audio_extn_sound_trigger_update_ec_ref_status(on)              (0)
 #else
 
 enum st_event_type {
@@ -413,6 +422,8 @@ int audio_extn_sound_trigger_read(struct stream_in *in, void *buffer,
                                   size_t bytes);
 void audio_extn_sound_trigger_get_parameters(const struct audio_device *adev,
                      struct str_parms *query, struct str_parms *reply);
+bool audio_extn_sound_trigger_check_ec_ref_enable();
+void audio_extn_sound_trigger_update_ec_ref_status(bool on);
 #endif
 
 #ifndef AUXPCM_BT_ENABLED
@@ -676,6 +687,7 @@ bool audio_extn_utils_is_dolby_format(audio_format_t format);
 int audio_extn_utils_get_bit_width_from_string(const char *);
 int audio_extn_utils_get_sample_rate_from_string(const char *);
 int audio_extn_utils_get_channels_from_string(const char *);
+void audio_extn_utils_release_snd_device(snd_device_t snd_device);
 
 #ifdef DS2_DOLBY_DAP_ENABLED
 #define LIB_DS2_DAP_HAL "vendor/lib/libhwdaphal.so"
@@ -955,22 +967,18 @@ int audio_extn_set_soundfocus_data(struct audio_device *adev,
 
 #ifndef FM_POWER_OPT
 #define audio_extn_fm_set_parameters(adev, parms) (0)
+#define audio_extn_fm_get_parameters(query, reply) (0)
 #else
 void audio_extn_fm_set_parameters(struct audio_device *adev,
                                    struct str_parms *parms);
+void audio_extn_fm_get_parameters(struct str_parms *query, struct str_parms *reply);
 #endif
 
 #ifndef APTX_DECODER_ENABLED
-#define audio_extn_aptx_dec_set_license(adev); (0)
-#define audio_extn_set_aptx_dec_bt_addr(adev, parms); (0)
-#define audio_extn_send_aptx_dec_bt_addr_to_dsp(out); (0)
-#define audio_extn_parse_aptx_dec_bt_addr(value); (0)
-#define audio_extn_set_aptx_dec_params(payload); (0)
+#define audio_extn_send_aptx_dec_bt_addr_to_dsp(out) (0)
+#define audio_extn_set_aptx_dec_params(payload) (0)
 #else
-static void audio_extn_aptx_dec_set_license(struct audio_device *adev);
-static void audio_extn_set_aptx_dec_bt_addr(struct audio_device *adev, struct str_parms *parms);
 void audio_extn_send_aptx_dec_bt_addr_to_dsp(struct stream_out *out);
-static void audio_extn_parse_aptx_dec_bt_addr(char *value);
 int audio_extn_set_aptx_dec_params(struct aptx_dec_param *payload);
 #endif
 int audio_extn_out_set_param_data(struct stream_out *out,
@@ -1101,4 +1109,37 @@ void audio_extn_ffv_check_and_append_ec_ref_dev(char *device_name);
 snd_device_t audio_extn_ffv_get_capture_snd_device();
 void audio_extn_ffv_append_ec_ref_dev_name(char *device_name);
 #endif
+
+#ifndef EXT_HW_PLUGIN_ENABLED
+#define audio_extn_ext_hw_plugin_init(adev)                (0)
+#define audio_extn_ext_hw_plugin_deinit(plugin)              (0)
+#define audio_extn_ext_hw_plugin_usecase_start(plugin, usecase) (0)
+#define audio_extn_ext_hw_plugin_usecase_stop(plugin, usecase) (0)
+#define audio_extn_ext_hw_plugin_set_parameters(plugin, parms) (0)
+#define audio_extn_ext_hw_plugin_get_parameters(plugin, query, reply) (0)
+#define audio_extn_ext_hw_plugin_set_mic_mute(plugin, mute) (0)
+#define audio_extn_ext_hw_plugin_get_mic_mute(plugin, mute) (0)
+#define audio_extn_ext_hw_plugin_set_audio_gain(plugin, usecase, gain) (0)
+#else
+void* audio_extn_ext_hw_plugin_init(struct audio_device *adev);
+int audio_extn_ext_hw_plugin_deinit(void *plugin);
+int audio_extn_ext_hw_plugin_usecase_start(void *plugin, struct audio_usecase *usecase);
+int audio_extn_ext_hw_plugin_usecase_stop(void *plugin, struct audio_usecase *usecase);
+int audio_extn_ext_hw_plugin_set_parameters(void *plugin,
+                                           struct str_parms *parms);
+int audio_extn_ext_hw_plugin_get_parameters(void *plugin,
+                  struct str_parms *query, struct str_parms *reply);
+int audio_extn_ext_hw_plugin_set_mic_mute(void *plugin, bool mute);
+int audio_extn_ext_hw_plugin_get_mic_mute(void *plugin, bool *mute);
+int audio_extn_ext_hw_plugin_set_audio_gain(void *plugin,
+            struct audio_usecase *usecase, uint32_t gain);
+#endif
+#ifndef CUSTOM_STEREO_ENABLED
+#define audio_extn_send_dual_mono_mixing_coefficients(out) (0)
+#else
+void audio_extn_send_dual_mono_mixing_coefficients(struct stream_out *out);
+#endif
+void audio_extn_set_custom_mtmx_params(struct audio_device *adev,
+                                        struct audio_usecase *usecase,
+                                        bool enable);
 #endif /* AUDIO_EXTN_H */
